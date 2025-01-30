@@ -1,0 +1,11 @@
+services:
+  phpcli:
+    build:
+      context: .
+      dockerfile: ./dockerfile
+      args:
+          PHP_VERSION: ${PHP_VERSION:-8.3}
+    image: ${DOCKER_HUB}/${PHP_IMAGE_NAME}:${PHP_VERSION:-8.3}
+    container_name: ${PHP_IMAGE_NAME}
+    volumes:
+      - '${PROJECT_ROOT}:${DOCKER_ROOT}'

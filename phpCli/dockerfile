@@ -1,0 +1,55 @@
+# Stage 1: Build dependencies and extensions
+ARG PHP_VERSION=8.3
+
+FROM php:${PHP_VERSION}-cli-alpine AS build
+
+LABEL maintainer="Rolf Beab <rolf@lane4.digital>"
+
+# Update und upgrade and install runtime dependencies required for extensions
+RUN apk update --no-cache && apk upgrade --no-cache && apk add --no-cache \
+    autoconf \
+    clang \
+    make \
+    g++ \
+    libc-dev \
+    linux-headers \
+    curl-dev \
+    libzip-dev \
+    libxml2-dev \
+    oniguruma-dev
+
+RUN ln -sf /usr/bin/clang /usr/bin/cc
+
+# PHP 7.4: Xdebug 3.1.6. >= 8.0: newest xdebug-version and redis
+RUN pecl channel-update pecl.php.net \
+    && if echo "$PHP_VERSION" | grep -q '7\.4'; then \
+         pecl install xdebug-3.1.6 redis; \
+       else \
+         pecl install xdebug redis; \
+       fi \
+    && docker-php-ext-enable xdebug redis
+
+# install extensions
+RUN docker-php-ext-install pdo pdo_mysql mysqli curl soap dom zip mbstring pcntl
+
+
+# Stage 2:
+FROM php:${PHP_VERSION}-cli-alpine
+
+# Update und upgrade and install runtime dependencies required for extensions
+RUN apk update --no-cache && apk upgrade --no-cache && apk add --no-cache libzip
+
+# Copy composer from its official image
+COPY --from=composer:latest /usr/bin/composer /usr/local/bin/composer
+
+# Copy installed extensions from the build stage
+COPY --from=build /usr/local/lib/php/extensions /usr/local/lib/php/extensions
+COPY --from=build /usr/local/etc/php/conf.d /usr/local/etc/php/conf.d
+
+# Copy and configure php.ini
+RUN cp /usr/local/etc/php/php.ini-production /usr/local/etc/php/php.ini
+
+RUN addgroup -g 1001 appgroup && adduser -G appgroup -u 1001 -D appuser
+USER appuser
+
+WORKDIR /app

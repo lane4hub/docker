@@ -1,0 +1,62 @@
+name: Build and Push Docker PHP CLI Images
+
+on:
+  push:
+    paths:
+      - 'phpCli/**'
+      - '.github/workflows/phpCli.yml'
+  pull_request:
+    paths:
+      - 'phpCli/**'
+      - '.github/workflows/phpCli.yml'
+
+concurrency:
+  group: ${{ github.ref }}-build
+  cancel-in-progress: true
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        php_version: ["7.4", "8.0", "8.1", "8.2", "8.3", "8.4"]
+      fail-fast: false
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USER_NAME }}
+          password: ${{ secrets.DOCKER_PAT }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          name: my-builder
+          install: true
+          driver-opts: image=moby/buildkit:buildx-stable-1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build and push Docker images
+        run: |
+          echo "Building PHP-CLI image for PHP version ${{ matrix.php_version }}..."
+          cd phpCli
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --provenance=mode=max \
+            --attest=type=sbom \
+            --build-arg PHP_VERSION=${{ matrix.php_version }} \
+            -t ${{ secrets.DOCKER_USER_NAME }}/phpcli:${{ matrix.php_version }} \
+            $(if [ "${{ matrix.php_version }}" = "8.4" ]; then echo "-t ${{ secrets.DOCKER_USER_NAME }}/phpcli:latest"; fi) \
+            --push \
+            -f dockerfile .
